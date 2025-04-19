@@ -1,0 +1,193 @@
+#include <Wire.h>
+#include <math.h>
+
+const int MPU = 0x68;
+int i =1;
+float AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
+float AcX_g=0.0,AcY_g=0.0,AcZ_g=0.0,AcX_p=0.0,AcY_p=0.0,AcZ_p=0.0;
+float GyX_g=0.0,GyY_g=0.0,GyZ_g=0.0,GyX_p=0.0,GyY_p=0.0,GyZ_p=0.0;
+float AcXcal, AcYcal, AcZcal, GyXcal, GyYcal, GyZcal, tcal;
+double t, tx, tf, pitch, roll;unsigned long startTime;
+void setup() {
+Serial.println("Setup started");
+Serial.println("AccX,AccY,AccZ");
+Wire.begin();
+Wire.beginTransmission(MPU);
+Wire.write(0x6B);
+Wire.write(0);
+Wire.endTransmission(true);
+Serial.begin(115200);
+startTime = millis(); // store the starting time
+}
+void loop() {
+Wire.beginTransmission(MPU);
+Wire.write(0x3B);
+Wire.endTransmission(false);
+Wire.requestFrom(MPU, 14, true);
+
+unsigned long currentTime = millis();
+unsigned long elapsedTime = (currentTime - startTime) / 1000; // convert to seconds
+  
+
+//Read value 
+
+
+
+AcX = Wire.read() << 8 | Wire.read();
+AcY = Wire.read() << 8 | Wire.read();
+AcZ = Wire.read() << 8 | Wire.read();
+Tmp = Wire.read() << 8 | Wire.read();
+
+GyX = Wire.read() << 8 | Wire.read();
+GyY = Wire.read() << 8 | Wire.read();
+GyZ = Wire.read() << 8 | Wire.read();
+
+
+/*
+if (t<a){
+  cal
+}
+
+*/
+
+if (elapsedTime<3){
+
+  Serial.println("Auto Calibrating...Removing Bias");
+
+  AcX_g= (AcX_g+AcX * 9.81 / 16384.0 );
+  AcY_g= (AcY_g+AcY * 9.81 / 16384.0 );
+  AcZ_g= (AcZ_g+AcZ * 9.81 / 16384.0 );
+
+
+
+    if (i==30){
+      AcX_p=AcX_g/30;
+      AcY_p=AcY_g/30;
+      AcZ_p=AcZ_g/30;
+
+
+      AcX_g=AcX_p;
+      AcY_g=AcY_p;
+      AcZ_g=AcZ_p;
+      i=0;}
+
+  // Calib points
+
+  AcXcal=-AcX_p;
+  AcYcal=-AcY_p;
+  AcZcal=-AcZ_p+9.81;
+
+i++;
+}
+else{
+  Serial.println("Running mode: CALIBRATED  ");
+
+
+
+
+
+
+/*    Manual Calib
+AcXcal = -0.36;
+AcYcal = 0.07;
+AcZcal = 0;
+tcal = -1600;
+GyXcal = 480;
+GyYcal = 170;
+GyZcal = 210;
+tx = Tmp + tcal;
+t = tx / 340 + 36.53;
+tf = (t * 9 / 5) + 32;
+/*getAngle(AcX, AcY, AcZ);
+Serial.print("Angle: ");
+Serial.print("Pitch = ");
+Serial.print(pitch);
+Serial.print(" Roll = ");
+Serial.println(roll);*/ 
+
+
+AcX_g= (AcX_g+AcX * 9.81 / 16384.0 );
+AcY_g= (AcY_g+AcY * 9.81 / 16384.0 );
+AcZ_g= (AcZ_g+AcZ * 9.81 / 16384.0 );
+
+if (i==30){
+  AcX_p=AcX_g/30;
+  AcY_p=AcY_g/30;
+  AcZ_p=AcZ_g/30;
+
+
+//Serial.print(",");
+/*
+Serial.print(AcY_g);
+
+Serial.print(",");
+
+Serial.print(AcZ_g);*/
+
+    AcX_g=AcX_p;
+    AcY_g=AcY_p;
+    AcZ_g=AcZ_p;}
+/*Serial.print(AcX_p+AcXcal);
+
+Serial.print(",");
+Serial.println(AcX * 9.81 / 16384.0 + AcXcal);
+*/
+Serial.print("AcX:");
+
+Serial.print(AcX_p+AcXcal);Serial.print(",");
+Serial.println(AcX * 9.81 / 16384.0 + AcXcal);
+Serial.print(",");
+
+Serial.print("AcY:");
+Serial.print(AcY_p+AcYcal);Serial.print(",");
+Serial.println(AcY * 9.81 / 16384.0 + AcYcal);
+Serial.print(",");
+
+Serial.print("AcZ:");
+Serial.print(AcZ_p+AcZcal);Serial.print(",");
+Serial.println(AcZ * 9.81 / 16384.0 + AcZcal);
+
+
+/*
+Serial.print(",");
+Serial.print(AcY * 9.81 / 16384.0 + AcYcal);
+Serial.print(",");
+Serial.println(AcZ * 9.81 / 16384.0 + AcZcal);*/
+/*Serial.print("Temperature in celsius = ");
+Serial.print(t);
+Serial.print(" fahrenheit = ");
+Serial.println(tf);
+Serial.print("Gyroscope: ");
+Serial.print("X = ");
+Serial.print(GyX + GyXcal);
+Serial.print(" Y = ");
+Serial.print(GyY + GyYcal);
+Serial.print(" Z = ");
+Serial.println(GyZ + GyZcal);*/
+delay(10);
+if (i==30){
+  i=0;
+}
+i++;}
+}void getAngle(int Ax, int Ay, int Az) {
+double x = Ax;
+double y = Ay;
+double z = Az;
+pitch = atan(x / sqrt((y * y) + (z * z)));
+roll = atan(y / sqrt((x * x) + (z * z)));
+pitch = pitch * (180.0 / 3.14);
+roll = roll * (180.0 / 3.14) ;
+}
+
+/*void Clb(float AcX, float AcY, float AcZ){ // function used after turning on the device for self calibrating 
+
+// Day 1 test 1 :
+
+// calculate average values of the accel indecies in vector
+// calib = - current value 
+
+
+}*/
+
+
+
