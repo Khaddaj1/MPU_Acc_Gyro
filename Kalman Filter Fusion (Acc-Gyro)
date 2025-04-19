@@ -1,0 +1,307 @@
+#include <Wire.h>
+#include <math.h>
+
+const int MPU = 0x68;
+int i =1;
+float AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
+float AcX_g=0.0,AcY_g=0.0,AcZ_g=0.0,AcX_p=0.0,AcY_p=0.0,AcZ_p=0.0;
+float GyX_g=0.0,GyY_g=0.0,GyZ_g=0.0,GyX_p=0.0,GyY_p=0.0,GyZ_p=0.0;
+float AcXcal, AcYcal, AcZcal, GyXcal, GyYcal, GyZcal, tcal;
+double t, tx, tf, pitch, roll;unsigned long startTime;
+uint32_t LoopTimer;
+//Kalman 
+float KalmanAngleRoll=0, KalmanUncertaintyAngleRoll=2*2;
+float KalmanAnglePitch=0, KalmanUncertaintyAnglePitch=2*2;
+float Kalman1DOutput[]={0,0};
+float RateRoll, RatePitch, RateYaw;
+float RateCalibrationRoll, RateCalibrationPitch, RateCalibrationYaw;
+int RateCalibrationNumber;
+float AccX, AccY, AccZ;
+float AngleRoll, AnglePitch;
+void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
+  KalmanState=KalmanState+0.004*KalmanInput;
+  KalmanUncertainty=KalmanUncertainty + 0.004 * 0.004 * 4 * 4;
+  float KalmanGain=KalmanUncertainty * 1/(1*KalmanUncertainty + 3 * 3);
+  KalmanState=KalmanState+KalmanGain * (KalmanMeasurement-KalmanState);
+  KalmanUncertainty=(1-KalmanGain) * KalmanUncertainty;
+  Kalman1DOutput[0]=KalmanState; 
+  Kalman1DOutput[1]=KalmanUncertainty;}
+
+
+void gyro_signals(void) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1A);
+  Wire.write(0x05);
+  Wire.endTransmission();
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1C);
+  Wire.write(0x10);
+  Wire.endTransmission();
+  Wire.beginTransmission(0x68);
+  Wire.write(0x3B);
+  Wire.endTransmission(); 
+  Wire.requestFrom(0x68,6);
+  int16_t AccXLSB = Wire.read() << 8 | Wire.read();
+  int16_t AccYLSB = Wire.read() << 8 | Wire.read();
+  int16_t AccZLSB = Wire.read() << 8 | Wire.read();
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1B); 
+  Wire.write(0x8);
+  Wire.endTransmission();     
+  Wire.beginTransmission(0x68);
+  Wire.write(0x43);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68,6);
+  int16_t GyroX=Wire.read()<<8 | Wire.read();
+  int16_t GyroY=Wire.read()<<8 | Wire.read();
+  int16_t GyroZ=Wire.read()<<8 | Wire.read();
+  RateRoll=(float)GyroX/65.5;
+  RatePitch=(float)GyroY/65.5;
+  RateYaw=(float)GyroZ/65.5;
+  AccX=(float)AccXLSB/4096;
+  AccY=(float)AccYLSB/4096;
+  AccZ=(float)AccZLSB/4096;
+  AngleRoll=atan(AccY/sqrt(AccX*AccX+AccZ*AccZ))*1/(3.142/180);
+  AnglePitch=-atan(AccX/sqrt(AccY*AccY+AccZ*AccZ))*1/(3.142/180);
+}
+
+
+
+
+
+
+
+
+void setup(){
+Serial.println("Setup started");
+Serial.println("AccX,AccY,AccZ");
+Wire.begin();
+Wire.beginTransmission(MPU);
+Wire.write(0x6B);
+Wire.write(0);
+Wire.endTransmission(true);
+Serial.begin(115200);
+startTime = millis(); // store the starting time
+
+//Kalman 
+
+for (RateCalibrationNumber=0; RateCalibrationNumber<2000; RateCalibrationNumber ++) {
+    gyro_signals();
+    RateCalibrationRoll+=RateRoll;
+    RateCalibrationPitch+=RatePitch;
+    RateCalibrationYaw+=RateYaw; 
+    delay(1);
+  }
+  RateCalibrationRoll/=2000;
+  RateCalibrationPitch/=2000;
+  RateCalibrationYaw/=2000;
+  LoopTimer=micros();
+}
+
+
+
+
+
+void loop() {
+Wire.beginTransmission(MPU);
+Wire.write(0x3B);
+Wire.endTransmission(false);
+Wire.requestFrom(MPU, 14, true);
+
+unsigned long currentTime = millis();
+unsigned long elapsedTime = (currentTime - startTime) / 1000; // convert to seconds
+  
+
+//Read value 
+
+
+
+AcX = Wire.read() << 8 | Wire.read();
+AcY = Wire.read() << 8 | Wire.read();
+AcZ = Wire.read() << 8 | Wire.read();
+Tmp = Wire.read() << 8 | Wire.read();
+
+GyX = Wire.read() << 8 | Wire.read();
+GyY = Wire.read() << 8 | Wire.read();
+GyZ = Wire.read() << 8 | Wire.read();
+
+
+/*
+if (t<a){
+  cal
+}
+
+*/
+
+if (elapsedTime<3){
+
+  Serial.println("Auto Calibrating...Removing Bias");
+
+  AcX_g= (AcX_g+AcX * 9.81 / 16384.0 );
+  AcY_g= (AcY_g+AcY * 9.81 / 16384.0 );
+  AcZ_g= (AcZ_g+AcZ * 9.81 / 16384.0 );
+
+
+
+    if (i==30){
+      AcX_p=AcX_g/30;
+      AcY_p=AcY_g/30;
+      AcZ_p=AcZ_g/30;
+
+
+      AcX_g=AcX_p;
+      AcY_g=AcY_p;
+      AcZ_g=AcZ_p;
+      i=0;}
+
+  // Calib points
+
+  AcXcal=-AcX_p;
+  AcYcal=-AcY_p;
+  AcZcal=-AcZ_p+9.81;
+
+i++;
+}
+else{
+  Serial.println("Running mode: CALIBRATED  ");
+
+
+
+
+
+
+/*    Manual Calib
+AcXcal = -0.36;
+AcYcal = 0.07;
+AcZcal = 0;
+tcal = -1600;
+GyXcal = 480;
+GyYcal = 170;
+GyZcal = 210;
+tx = Tmp + tcal;
+t = tx / 340 + 36.53;
+tf = (t * 9 / 5) + 32;
+/*getAngle(AcX, AcY, AcZ);
+Serial.print("Angle: ");
+Serial.print("Pitch = ");
+Serial.print(pitch);
+Serial.print(" Roll = ");
+Serial.println(roll);*/ 
+
+
+AcX_g= (AcX_g+AcX * 9.81 / 16384.0 );
+AcY_g= (AcY_g+AcY * 9.81 / 16384.0 );
+AcZ_g= (AcZ_g+AcZ * 9.81 / 16384.0 );
+
+if (i==30){
+  AcX_p=AcX_g/30;
+  AcY_p=AcY_g/30;
+  AcZ_p=AcZ_g/30;
+
+
+//Serial.print(",");
+/*
+Serial.print(AcY_g);
+
+Serial.print(",");
+
+Serial.print(AcZ_g);*/
+
+    AcX_g=AcX_p;
+    AcY_g=AcY_p;
+    AcZ_g=AcZ_p;}
+/*Serial.print(AcX_p+AcXcal);
+
+Serial.print(",");
+Serial.println(AcX * 9.81 / 16384.0 + AcXcal);
+*/
+
+//Kalman 
+
+
+  gyro_signals();
+  RateRoll-=RateCalibrationRoll;
+  RatePitch-=RateCalibrationPitch;
+  RateYaw-=RateCalibrationYaw;
+  kalman_1d(KalmanAngleRoll, KalmanUncertaintyAngleRoll, RateRoll, AngleRoll);
+  KalmanAngleRoll=Kalman1DOutput[0]; 
+  KalmanUncertaintyAngleRoll=Kalman1DOutput[1];
+  kalman_1d(KalmanAnglePitch, KalmanUncertaintyAnglePitch, RatePitch, AnglePitch);
+  KalmanAnglePitch=Kalman1DOutput[0]; 
+  KalmanUncertaintyAnglePitch=Kalman1DOutput[1];
+  Serial.print("Roll Angle [°] ");
+  Serial.print(KalmanAngleRoll);
+  Serial.print(" Pitch Angle [°] ");
+  Serial.println(KalmanAnglePitch);
+  while (micros() - LoopTimer < 4000);
+  LoopTimer=micros();
+
+//
+
+Serial.print("AcX:");
+
+Serial.print(AcX_p+AcXcal);Serial.print(",");
+Serial.println(AcX * 9.81 / 16384.0 + AcXcal);
+Serial.print(",");
+
+Serial.print("AcY:");
+Serial.print(AcY_p+AcYcal);Serial.print(",");
+Serial.println(AcY * 9.81 / 16384.0 + AcYcal);
+Serial.print(",");
+
+Serial.print("AcZ:");
+Serial.print(AcZ_p+AcZcal);Serial.print(",");
+Serial.println(AcZ * 9.81 / 16384.0 + AcZcal);
+
+
+/*
+Serial.print(",");
+Serial.print(AcY * 9.81 / 16384.0 + AcYcal);
+Serial.print(",");
+Serial.println(AcZ * 9.81 / 16384.0 + AcZcal);*/
+/*Serial.print("Temperature in celsius = ");
+Serial.print(t);
+Serial.print(" fahrenheit = ");
+Serial.println(tf);
+Serial.print("Gyroscope: ");
+Serial.print("X = ");
+Serial.print(GyX + GyXcal);
+Serial.print(" Y = ");
+Serial.print(GyY + GyYcal);
+Serial.print(" Z = ");
+Serial.println(GyZ + GyZcal);*/
+delay(10);
+if (i==30){
+  i=0;
+}
+i++;}
+
+
+}void getAngle(int Ax, int Ay, int Az) {
+double x = Ax;
+double y = Ay;
+double z = Az;
+pitch = atan(x / sqrt((y * y) + (z * z)));
+roll = atan(y / sqrt((x * x) + (z * z)));
+pitch = pitch * (180.0 / 3.14);
+roll = roll * (180.0 / 3.14) ;
+}
+
+/*void Clb(float AcX, float AcY, float AcZ){ // function used after turning on the device for self calibrating 
+
+// Day 1 test 1 :
+
+// calculate average values of the accel indecies in vector
+// calib = - current value 
+
+
+}*/
+
+
+//Kalman 
+
+
+
+
+
+
